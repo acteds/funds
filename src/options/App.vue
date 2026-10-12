@@ -69,6 +69,23 @@
 
         <li>
           <div class="list-title">
+            Y轴坐标设置
+          </div>
+          <div class="select-row">
+            <span>使用对数坐标</span>
+            <el-switch
+              v-model="logYAxis"
+              @change="changeOption($event, 'logYAxis')"
+            >
+            </el-switch>
+          </div>
+          <p>
+            tips：开启后，基金详情页「历史净值」「累计收益」两图的Y轴使用对数坐标，便于比较涨跌的相对幅度；「累计收益」按净值倍数（1+涨幅/100）取对数，坐标与提示仍显示为百分比。
+          </p>
+        </li>
+
+        <li>
+          <div class="list-title">
             基金列表展示内容设置
           </div>
           <div class="select-row">
@@ -300,6 +317,7 @@ export default {
       showGains: false,
       showCost: false,
       showCostRate: false,
+      logYAxis: false,
       darkMode: false,
       showBadge: 1,
       BadgeContent: 1,
@@ -446,6 +464,7 @@ export default {
           "showGains",
           "showCost",
           "showCostRate",
+          "logYAxis",
           "showGSZ",
           "darkMode",
           "normalFontSize",
@@ -500,6 +519,7 @@ export default {
           this.showGSZ = res.showGSZ ? res.showGSZ : false;
           this.showCost = res.showCost ? res.showCost : false;
           this.showCostRate = res.showCostRate ? res.showCostRate : false;
+          this.logYAxis = res.logYAxis ? res.logYAxis : false;
           this.darkMode = res.darkMode ? res.darkMode : false;
           this.normalFontSize = res.normalFontSize ? res.normalFontSize : false;
           this.showBadge = res.showBadge ? res.showBadge : 1;

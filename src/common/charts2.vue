@@ -65,6 +65,8 @@ export default {
       },
       option: {},
       loading: false,
+      logYAxis: false, // 设置项：Y 轴是否使用对数坐标
+      useLog: false, // 当前图表实际是否按对数坐标绘制
     };
   },
 
@@ -111,13 +113,7 @@ export default {
           scale: true,
           axisLabel: {
             color: this.defaultColor,
-            formatter: (val) => {
-              if (this.chartType == "LJSY") {
-                return val.toFixed(1) + "%";
-              } else {
-                return val.toFixed(3);
-              }
-            },
+            formatter: (val) => this.fmtAxis(val),
           },
           splitLine: {
             show: true,
@@ -135,7 +131,11 @@ export default {
           },
         ],
       };
-      this.getData();
+      // 先取设置再拉数据，保证首帧的坐标系就是用户选择的
+      chrome.storage.sync.get("logYAxis", (res) => {
+        this.logYAxis = !!res.logYAxis;
+        this.getData();
+      });
     },
     changeTimeRange(val) {
       this.getData();
@@ -144,6 +144,60 @@ export default {
       var _aa = Math.max.apply(null, data);
       var _bb = Math.min.apply(null, data);
       return [_aa, _bb];
+    },
+    // ---------------- 对数坐标（设置中可开关） ----------------
+    // 历史净值：坐标取 log10(净值)，标签与提示还原成净值。
+    // 累计收益是百分比曲线（起点 0%、经常为负），对其净值倍数 1+涨幅/100 取对数，
+    // 标签与提示仍显示百分比。
+    // 数据中出现无法取对数的值（<=0）时，该图自动保持原来的线性坐标。
+    setLogAxis(values, isPercent) {
+      let useLog = !!this.logYAxis;
+      if (useLog) {
+        for (let i = 0; i < values.length; i++) {
+          const raw = values[i];
+          if (raw === null || raw === undefined || raw === "") {
+            continue;
+          }
+          const num = +raw;
+          const base = isPercent ? 1 + num / 100 : num;
+          if (!isFinite(num) || !(base > 0)) {
+            useLog = false;
+            break;
+          }
+        }
+      }
+      this.useLog = useLog;
+    },
+    axisVal(value, isPercent) {
+      const num = +value;
+      if (!this.useLog) {
+        return num;
+      }
+      if (
+        value === null ||
+        value === undefined ||
+        value === "" ||
+        !isFinite(num)
+      ) {
+        return null;
+      }
+      const base = isPercent ? 1 + num / 100 : num;
+      return base > 0 ? Math.log(base) / Math.LN10 : null;
+    },
+    valOf(value) {
+      return this.useLog
+        ? Math.round(Math.pow(10, +value) * 1e6) / 1e6
+        : +value;
+    },
+    pctOf(value) {
+      return this.useLog
+        ? Math.round((Math.pow(10, +value) - 1) * 1e4) / 100
+        : +value;
+    },
+    fmtAxis(value) {
+      return this.chartType == "LJSY"
+        ? this.pctOf(value).toFixed(1) + "%"
+        : this.valOf(value).toFixed(3);
     },
     getData() {
       this.loading = true;
@@ -157,24 +211,34 @@ export default {
           this.loading = false;
           let dataList = res.data.Datas;
           if (dataList) {
+            this.setLogAxis(
+              dataList
+                .map((item) => +item.YIELD)
+                .concat(dataList.map((item) => +item.INDEXYIED)),
+              true
+            );
             this.option.legend = {
               show: true,
             };
             this.option.tooltip.formatter = (p) => {
               let str =
-                p.length > 1 ? `<br />${p[1].seriesName}：${p[1].value}%` : "";
-              return `时间：${p[0].name}<br />${p[0].seriesName}：${p[0].value}%${str}`;
+                p.length > 1
+                  ? `<br />${p[1].seriesName}：${this.pctOf(p[1].value)}%`
+                  : "";
+              return `时间：${p[0].name}<br />${p[0].seriesName}：${this.pctOf(
+                p[0].value
+              )}%${str}`;
             };
             this.option.series = [
               {
                 type: "line",
                 name: "涨幅",
-                data: dataList.map((item) => +item.YIELD),
+                data: dataList.map((item) => this.axisVal(item.YIELD, true)),
               },
               {
                 type: "line",
                 name: res.data.Expansion.INDEXNAME,
-                data: dataList.map((item) => +item.INDEXYIED),
+                data: dataList.map((item) => this.axisVal(item.INDEXYIED, true)),
               },
             ];
             this.option.xAxis.data = dataList.map((item) => item.PDATE);
@@ -190,24 +254,31 @@ export default {
         this.$axios.get(url).then((res) => {
           this.loading = false;
           let dataList = res.data.Datas;
+          this.setLogAxis(
+            dataList
+              .map((item) => +item.DWJZ)
+              .concat(dataList.map((item) => +item.LJJZ))
+          );
           this.option.series = [
             {
               type: "line",
               name: "单位净值",
-              data: dataList.map((item) => +item.DWJZ),
+              data: dataList.map((item) => this.axisVal(item.DWJZ)),
             },
             {
               type: "line",
               name: "累计净值",
-              data: dataList.map((item) => +item.LJJZ),
+              data: dataList.map((item) => this.axisVal(item.LJJZ)),
             },
           ];
           this.option.tooltip.formatter = (p) => {
             let str =
-              p.length > 1 ? `<br />${p[1].seriesName}：${p[1].value}` : "";
-            return `时间：${p[0].name}<br />${p[0].seriesName}：${
+              p.length > 1
+                ? `<br />${p[1].seriesName}：${this.valOf(p[1].value)}`
+                : "";
+            return `时间：${p[0].name}<br />${p[0].seriesName}：${this.valOf(
               p[0].value
-            }${str}<br />日增长率：${dataList[p[0].dataIndex].JZZZL}%`;
+            )}${str}<br />日增长率：${dataList[p[0].dataIndex].JZZZL}%`;
           };
           this.option.legend = {
             show: true,
