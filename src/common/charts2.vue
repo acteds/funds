@@ -199,6 +199,76 @@ export default {
         ? this.pctOf(value).toFixed(1) + "%"
         : this.valOf(value).toFixed(3);
     },
+    // 对数坐标的刻度：数字取等差的「整」值（净值 0.1/0.5/1/5…，收益 10%/50%/100%…），
+    // 位置按对数落点，所以越往上越挤。返回 [{ coord, text }]。
+    logTicks(min, max, isPercent) {
+      const steps = isPercent
+        ? [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
+        : [0.001, 0.002, 0.0025, 0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000];
+      const lo = min;
+      const hi = max;
+      let step = steps[steps.length - 1];
+      for (let i = 0; i < steps.length; i++) {
+        if ((hi - lo) / steps[i] <= 9) {
+          step = steps[i];
+          break;
+        }
+      }
+      const ticks = [];
+      for (let k = Math.ceil(lo / step); k * step <= hi; k++) {
+        const val = k * step;
+        const factor = isPercent ? 1 + val / 100 : val;
+        ticks.push({
+          coord: Math.log(factor) / Math.LN10,
+          text: isPercent ? val.toFixed(1) + "%" : val.toFixed(3),
+        });
+      }
+      return ticks;
+    },
+    // 对数模式下：隐藏原生刻度/网格，改用等差刻度（markLine 画线+标注）；
+    // 关掉开关时恢复原生刻度。
+    applyAxisMode(values, isPercent) {
+      const onLog = this.useLog;
+      const axis = this.option.yAxis;
+      axis.axisLabel.show = !onLog;
+      axis.axisTick = axis.axisTick || {};
+      axis.axisTick.show = !onLog;
+      axis.splitLine.show = !onLog;
+      const series = this.option.series || [];
+      if (!onLog || !series.length) {
+        return;
+      }
+      let min = Infinity;
+      let max = -Infinity;
+      values.forEach((raw) => {
+        const num = +raw;
+        if (raw === null || raw === undefined || raw === "" || !isFinite(num)) {
+          return;
+        }
+        min = Math.min(min, num);
+        max = Math.max(max, num);
+      });
+      if (!isFinite(min) || !isFinite(max)) {
+        return;
+      }
+      series[0].markLine = {
+        silent: true,
+        symbol: "none",
+        animation: false,
+        lineStyle: { type: "dashed", color: this.defaultColor },
+        label: {
+          show: true,
+          position: "start",
+          color: this.defaultColor,
+          fontSize: 12,
+          formatter: (p) => (p.data && p.data.text) || "",
+        },
+        data: this.logTicks(min, max, isPercent).map((tick) => ({
+          yAxis: tick.coord,
+          text: tick.text,
+        })),
+      };
+    },
     getData() {
       this.loading = true;
       if (this.chartType == "LJSY") {
@@ -242,6 +312,12 @@ export default {
               },
             ];
             this.option.xAxis.data = dataList.map((item) => item.PDATE);
+            this.applyAxisMode(
+              dataList
+                .map((item) => +item.YIELD)
+                .concat(dataList.map((item) => +item.INDEXYIED)),
+              true
+            );
             this.myChart.setOption(this.option);
           }
         });
@@ -284,6 +360,11 @@ export default {
             show: true,
           };
           this.option.xAxis.data = dataList.map((item) => item.FSRQ);
+          this.applyAxisMode(
+            dataList
+              .map((item) => +item.DWJZ)
+              .concat(dataList.map((item) => +item.LJJZ))
+          );
           this.myChart.setOption(this.option);
         });
       }
