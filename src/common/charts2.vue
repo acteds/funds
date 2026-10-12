@@ -152,18 +152,19 @@ export default {
     // 数据中出现无法取对数的值（<=0）时，该图自动保持原来的线性坐标。
     setLogAxis(values, isPercent) {
       let useLog = !!this.logYAxis;
-      if (useLog) {
-        for (let i = 0; i < values.length; i++) {
-          const raw = values[i];
-          if (raw === null || raw === undefined || raw === "") {
-            continue;
-          }
-          const num = +raw;
-          const base = isPercent ? 1 + num / 100 : num;
-          if (!isFinite(num) || !(base > 0)) {
-            useLog = false;
-            break;
-          }
+      for (let i = 0; useLog && i < values.length; i++) {
+        const raw = values[i];
+        if (raw === null || raw === undefined || raw === "") {
+          continue;
+        }
+        const num = +raw;
+        // 缺失/非数字的值按断点处理，不影响坐标类型
+        if (!isFinite(num)) {
+          continue;
+        }
+        const base = isPercent ? 1 + num / 100 : num;
+        if (!(base > 0)) {
+          useLog = false;
         }
       }
       this.useLog = useLog;
